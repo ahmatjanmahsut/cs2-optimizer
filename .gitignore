@@ -1,0 +1,13 @@
+node_modules/
+release/
+dist/
+*.log
+*.bak
+vendor/
+scripts/e2e-*.js
+scripts/verify.js
+t?.json
+dbg.ps1
+src/main/assets/mouse-backup.json
+electron-run.log
+ui-screenshot.png

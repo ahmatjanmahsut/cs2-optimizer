@@ -1,0 +1,194 @@
+
+using System;
+using System.Text;
+using System.Runtime.InteropServices;
+
+namespace CStuner
+{
+    [StructLayout(LayoutKind.Sequential, Pack = 8, CharSet = CharSet.Unicode)]
+    public struct NVDRS_SETTING_UNION
+    {
+        [MarshalAs(UnmanagedType.ByValArray, SizeConst = 4100)]
+        public byte[] rawData;
+        public uint dwordValue
+        {
+            get { return BitConverter.ToUInt32(rawData == null ? new byte[4100] : rawData, 0); }
+            set
+            {
+                if (rawData == null || rawData.Length != 4100) rawData = new byte[4100];
+                Buffer.BlockCopy(BitConverter.GetBytes(value), 0, rawData, 0, 4);
+            }
+        }
+    }
+
+    [StructLayout(LayoutKind.Sequential, Pack = 8, CharSet = CharSet.Unicode)]
+    public struct NVDRS_SETTING
+    {
+        public uint version;
+        [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 2048)]
+        public string settingName;
+        public uint settingId;
+        public int settingType;
+        public int settingLocation;
+        public uint isCurrentPredefined;
+        public uint isPredefinedValid;
+        public NVDRS_SETTING_UNION predefinedValue;
+        public NVDRS_SETTING_UNION currentValue;
+    }
+
+    [StructLayout(LayoutKind.Sequential, Pack = 8, CharSet = CharSet.Unicode)]
+    public struct NVDRS_APPLICATION_V4
+    {
+        public uint version;
+        public uint isPredefined;
+        [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 2048)]
+        public string appName;
+        [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 2048)]
+        public string userFriendlyName;
+        [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 2048)]
+        public string launcher;
+        [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 2048)]
+        public string fileInFolder;
+        public uint bitvector1;
+        [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 2048)]
+        public string commandLine;
+    }
+
+    [StructLayout(LayoutKind.Sequential, Pack = 8, CharSet = CharSet.Unicode)]
+    public struct NVDRS_PROFILE
+    {
+        public uint version;
+        [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 2048)]
+        public string profileName;
+        public uint gpuSupport;
+        public uint isPredefined;
+        public uint numOfApps;
+        public uint numOfSettings;
+    }
+
+    public class Drv
+    {
+        [DllImport("kernel32.dll")] static extern IntPtr LoadLibrary(string n);
+        [DllImport("kernel32.dll")] static extern IntPtr GetProcAddress(IntPtr h, string name);
+        [DllImport("kernel32.dll", EntryPoint = "GetProcAddress")] static extern IntPtr GetProcOrd(IntPtr h, uint ord);
+
+        [UnmanagedFunctionPointer(CallingConvention.Cdecl)] delegate int FnInit();
+        [UnmanagedFunctionPointer(CallingConvention.Cdecl)] delegate IntPtr FnQuery(uint id);
+        [UnmanagedFunctionPointer(CallingConvention.Cdecl)] delegate int FnCreateSession(ref IntPtr s);
+        [UnmanagedFunctionPointer(CallingConvention.Cdecl)] delegate int FnDestroy(IntPtr s);
+        [UnmanagedFunctionPointer(CallingConvention.Cdecl)] delegate int FnOne(IntPtr s);
+        [UnmanagedFunctionPointer(CallingConvention.Cdecl)] delegate int FnGetBase(IntPtr s, out IntPtr p);
+        [UnmanagedFunctionPointer(CallingConvention.Cdecl)] delegate int FnFindProfile(IntPtr s, StringBuilder name, out IntPtr p);
+        [UnmanagedFunctionPointer(CallingConvention.Cdecl)] delegate int FnCreateProfile(IntPtr s, ref NVDRS_PROFILE i, out IntPtr p);
+        [UnmanagedFunctionPointer(CallingConvention.Cdecl)] delegate int FnCreateApp(IntPtr s, IntPtr p, ref NVDRS_APPLICATION_V4 a);
+        [UnmanagedFunctionPointer(CallingConvention.Cdecl)] delegate int FnGetSetting(IntPtr s, IntPtr p, uint id, ref NVDRS_SETTING st, ref uint x);
+        [UnmanagedFunctionPointer(CallingConvention.Cdecl)] delegate int FnSetSetting(IntPtr s, IntPtr p, ref NVDRS_SETTING st, uint x, uint y);
+        [UnmanagedFunctionPointer(CallingConvention.Cdecl)] delegate int FnDeleteSetting(IntPtr s, IntPtr p, uint id);
+        [UnmanagedFunctionPointer(CallingConvention.Cdecl)] delegate int FnDeleteProfile(IntPtr s, IntPtr p);
+
+        static FnQuery q; static FnCreateSession cs; static FnDestroy ds;
+        static FnOne ld, sv; static FnGetBase gb; static FnFindProfile fp;
+        static FnCreateProfile cp; static FnCreateApp ca; static FnGetSetting gs;
+        static FnSetSetting ss; static FnDeleteSetting dl; static FnDeleteProfile dp;
+        static bool ready = false;
+
+        static T D<T>(uint id) where T : class
+        {
+            IntPtr p = q(id);
+            return p == IntPtr.Zero ? null : (T)(object)Marshal.GetDelegateForFunctionPointer(p, typeof(T));
+        }
+
+        public static int Init()
+        {
+            if (ready) return 0;
+            IntPtr lib = LoadLibrary("nvapi64.dll");
+            if (lib == IntPtr.Zero) lib = LoadLibrary("C:\\Windows\\System32\\nvapi64.dll");
+            if (lib == IntPtr.Zero) return -2;
+            IntPtr a = GetProcAddress(lib, "nvapi_QueryInterface");
+            if (a == IntPtr.Zero) a = GetProcOrd(lib, 1);
+            if (a == IntPtr.Zero) return -3;
+            q = (FnQuery)Marshal.GetDelegateForFunctionPointer(a, typeof(FnQuery));
+            IntPtr ia = q(0x0150E828u);
+            if (ia == IntPtr.Zero) return -5;
+            FnInit ini = (FnInit)Marshal.GetDelegateForFunctionPointer(ia, typeof(FnInit));
+            int st = ini();
+            if (st != 0) return 1000 + st;
+            cs = D<FnCreateSession>(0x0694d52e);
+            ds = D<FnDestroy>(0xdad9cff8);
+            ld = D<FnOne>(0x375dbd6b);
+            sv = D<FnOne>(0xfcbc7e14);
+            gb = D<FnGetBase>(0xda8466a0);
+            fp = D<FnFindProfile>(0x7e4a9a0b);
+            cp = D<FnCreateProfile>(0xcc176068);
+            ca = D<FnCreateApp>(0x4347a9de);
+            gs = D<FnGetSetting>(0x73bf8338);
+            ss = D<FnSetSetting>(0x577dd202);
+            dl = D<FnDeleteSetting>(0xe4a26362);
+            dp = D<FnDeleteProfile>(0x17093206);
+            if (cs == null || ld == null || sv == null || gs == null || ss == null) return -6;
+            ready = true;
+            return 0;
+        }
+
+        public static uint VerSetting() { return (uint)(Marshal.SizeOf(typeof(NVDRS_SETTING)) | (1 << 16)); }
+        public static uint VerApp() { return (uint)(Marshal.SizeOf(typeof(NVDRS_APPLICATION_V4)) | (4 << 16)); }
+        public static uint VerProfile() { return (uint)(Marshal.SizeOf(typeof(NVDRS_PROFILE)) | (1 << 16)); }
+
+        public static int SessOpen(out IntPtr s) { s = IntPtr.Zero; return cs(ref s); }
+        public static void SessClose(IntPtr s) { ds(s); }
+        public static int Load(IntPtr s) { return ld(s); }
+        public static int Save(IntPtr s) { return sv(s); }
+        public static int BaseProfile(IntPtr s, out IntPtr p) { p = IntPtr.Zero; return gb(s, out p); }
+        public static int ProfileFind(IntPtr s, string name, out IntPtr p)
+        {
+            p = IntPtr.Zero;
+            StringBuilder sb = new StringBuilder(name, 2048);
+            return fp(s, sb, out p);
+        }
+        public static int ProfileCreate(IntPtr s, string name, out IntPtr p)
+        {
+            p = IntPtr.Zero;
+            NVDRS_PROFILE i = new NVDRS_PROFILE();
+            i.version = VerProfile();
+            i.profileName = name;
+            i.gpuSupport = 0xFFFFFFFFu;
+            i.isPredefined = 0;
+            return cp(s, ref i, out p);
+        }
+        public static int ProfileDelete(IntPtr s, IntPtr p) { return dp(s, p); }
+        public static int AppCreate(IntPtr s, IntPtr p, string name)
+        {
+            NVDRS_APPLICATION_V4 a = new NVDRS_APPLICATION_V4();
+            a.version = VerApp();
+            a.appName = name;
+            a.userFriendlyName = name;
+            return ca(s, p, ref a);
+        }
+        public static int SettingRead(IntPtr s, IntPtr p, uint id, out uint value, out int predefined)
+        {
+            value = 0; predefined = -1;
+            NVDRS_SETTING st = new NVDRS_SETTING();
+            st.version = VerSetting();
+            uint x = 0;
+            int code = gs(s, p, id, ref st, ref x);
+            if (code != 0) return code;
+            value = st.currentValue.dwordValue;
+            predefined = (int)st.isCurrentPredefined;
+            return 0;
+        }
+        public static int SettingApply(IntPtr s, IntPtr p, uint id, uint value)
+        {
+            NVDRS_SETTING st = new NVDRS_SETTING();
+            st.version = VerSetting();
+            st.settingId = id;
+            st.settingType = 0;
+            st.settingLocation = 0;
+            st.isCurrentPredefined = 0;
+            st.isPredefinedValid = 0;
+            st.predefinedValue.dwordValue = 0;
+            st.currentValue.dwordValue = value;
+            return ss(s, p, ref st, 0, 0);
+        }
+        public static int SettingDelete(IntPtr s, IntPtr p, uint id) { return dl(s, p, id); }
+    }
+}

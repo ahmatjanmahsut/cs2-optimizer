@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' data: file:; style-src 'self' 'unsafe-inline'; script-src 'self'" />
+  <title>CS2 优化助手</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <div id="app">
+    <aside id="sidebar">
+      <div class="brand">
+        <div class="brand-icon">🎯</div>
+        <div>
+          <div class="brand-name">CS2 优化助手</div>
+          <div class="brand-sub">新玩家调优工具</div>
+        </div>
+      </div>
+      <nav id="nav"></nav>
+      <div class="sidebar-footer">v0.1.0 · 框架版</div>
+    </aside>
+    <main id="main">
+      <header id="topbar">
+        <div>
+          <h1 id="page-title">概览</h1>
+          <p id="page-sub" class="muted"></p>
+        </div>
+        <div id="status-chips"></div>
+      </header>
+      <section id="view"></section>
+    </main>
+  </div>
+  <div id="toasts"></div>
+  <script src="util.js"></script>
+  <script src="pages/home.js"></script>
+  <script src="pages/device.js"></script>
+  <script src="pages/game.js"></script>
+  <script src="pages/pro.js"></script>
+  <script src="pages/settings.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
