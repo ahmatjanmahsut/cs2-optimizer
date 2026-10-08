@@ -27,11 +27,6 @@ Electron 33 实现；驱动写入通过 NVIDIA NVAPI DRS 接口（官方 nvapi �
   - 全动作改键表：默认键位**直接读取自当前版本游戏文件 user_keys_default.vcfg**（+sprint/player_ping/+radialradio/switchhands 等命令名 100% 与游戏一致），勾选动作 + 填新键即生成 bind；非法键名标红且不写入
   - 全部绑定并入 ⑤ 区 cfg 输出（“按键绑定与便捷功能”段），随一键实施落地
 
-- 🌐 **Steam 访问辅助（v0.6 新增）**
-  - 原理同 SteamCommunity 302 / Watt Toolkit：阿里 DoH 解析 + 逐 IP TLS 握手实测筛出当前网络可达的 Steam 接入 IP →
-    hosts 注入指向本机 → 本地 127.0.0.1:80/443 纯 TCP/SNI 中转转发到可达 IP
-  - 不终止 TLS、不安装任何证书（官方证书原样透传），账号安全不受影响；停用一键还原 hosts + 清 DNS 缓存
-  - 页面内置“接入点探测”实时列表；启用需一次 UAC（写 hosts + 起中转进程），支持 store/api/help/community 等域名
 - 🩺 **一键体检报告（v0.6 新增）**
   - 一次采集：硬件/驱动版本、NVAPI 驱动项真实回读（与推荐值逐项对比）、显示器与刷新率、电源计划与 powercfg 细项、
     全部系统优化开关状态、Steam 中转状态、CS2 与 cfg 文件情况 → 输出 ✔/⚠/✘ 分级 Markdown 报告
@@ -54,6 +49,11 @@ Electron 33 实现；驱动写入通过 NVIDIA NVAPI DRS 接口（官方 nvapi �
 - 系统项：全部走 HKCU（无需管理员），DirectX UserGpuPreferences / AppCompatFlags Layers / GameDVR / GameBar / Control Panel Mouse
 - 游戏配置：autoexec.cfg 标记块（CS2-Optimizer:TAG BEGIN/END）替换写入 + 时间戳 .bak 备份
 - 跨页草稿：localStorage（cs2opt-draft:*），首页统一执行
+
+## 关于 Steam 社区访问
+Steam 社区/商店在部分网络下需配合代理工具（如 Clash Verge / v2ray 等）访问，本工具不再内置流量中转功能
+（此前版本曾内置本地 hosts 注入 + SNI 中转方案，因与系统代理并存时易互相干扰、且失败时可能影响上网，已移除）。
+提示：Steam 客户端本身不读取系统代理，如社区在客户端内打不开，可在代理软件中开启 TUN/虚拟网卡模式。
 
 ## 边界与说明
 - AMD 驱动设置没有公开稳定的写入接口，为避免写坏配置提供“官方清单 + 直达面板”，未做自动写入

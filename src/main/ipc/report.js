@@ -6,7 +6,6 @@ const { app, dialog } = require('electron')
 const system = require('./system')
 const power = require('./power')
 const apply = require('./apply')
-const steam302 = require('./steam302')
 const cs2cfg = require('./cs2cfg')
 const { ps } = require('./powershell')
 const { screen } = require('electron')
@@ -90,15 +89,6 @@ async function generate() {
     else item(sysSec, t.title, 'info', '当前环境无法检测（远程/虚拟桌面或系统限制）')
   })
   out.sections.push(sysSec)
-
-  const stSec = section('Steam 访问（社区/商店）')
-  const st = steam302.status()
-  if (st.running) item(stSec, '本地中转', 'ok', '运行中 · 已转发 ' + st.requests + ' 请求 · 覆盖域名 ' + st.domains.length + ' 个')
-  else {
-    item(stSec, '本地中转', 'info', '未启用', 'Steam 社区打不开的话，到 Steam 访问辅助页一键启用（需一次 UAC 授权）')
-  }
-  if (st.error) item(stSec, '中转错误', 'bad', st.error)
-  out.sections.push(stSec)
 
   const gSec = section('CS2 游戏配置')
   item(gSec, 'CS2 安装', loc.found ? 'ok' : 'bad', loc.found ? loc.gameDir : '未找到（确认 Steam 已安装游戏）')

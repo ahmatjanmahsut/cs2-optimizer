@@ -7,7 +7,6 @@
       { id: 'game', icon: '🎯', name: '游戏设置调整' },
       { id: 'report', icon: '🩺', name: '一键体检报告' }
     ] },
-    { group: '网络与账号', items: [{ id: 'steam', icon: '🌐', name: 'Steam 访问辅助' }] },
     { group: '其他', items: [{ id: 'settings', icon: '⚙️', name: '路径与关于' }] }
   ]
 
