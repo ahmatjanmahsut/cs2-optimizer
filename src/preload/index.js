@@ -16,6 +16,10 @@ contextBridge.exposeInMainWorld('api', {
     displays: invoker('display:info')
   
   },
+  amd: {
+    detect: invoker('amd:detect'),
+    open: invoker('amd:open')
+  },
   pro: {
     data: invoker('pro:data')
   },

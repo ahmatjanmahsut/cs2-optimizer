@@ -6,6 +6,7 @@ const gpu = require('./gpu')
 const cs2cfg = require('./cs2cfg')
 const apply = require('./apply')
 const report = require('./report')
+const amd = require('./amd')
 const { screen } = require('electron')
 
 function handle(channel, fn) {
@@ -70,6 +71,10 @@ function registerIpc() {
   handle('apply:sysApply', function (ids) { return apply.sysApply(ids) })
   handle('apply:mouseRestore', function () { return apply.mouseRestore() })
   handle('apply:all', function (plan) { return apply.applyAll(plan) })
+
+  // AMD 能力探测
+  handle('amd:detect', function () { return amd.detect() })
+  handle('amd:open', function () { return amd.openRadeon() })
 
   // 一键体检报告
   handle('report:generate', function () { return report.generate() })

@@ -9,6 +9,7 @@ const apply = require('./apply')
 const cs2cfg = require('./cs2cfg')
 const { ps } = require('./powershell')
 const { screen } = require('electron')
+const amd = require('./amd')
 
 const ASSETS = path.join(__dirname, '..', 'assets')
 
@@ -90,6 +91,78 @@ async function generate() {
   })
   out.sections.push(sysSec)
 
+  /* —— 图形与系统高级项（HAGS / 磁盘 / 启动项 / 覆盖层） —— */
+  const hSec = section('图形与系统高级项')
+  try {
+    const hw = await ps("$v = (Get-ItemProperty 'HKLM:\\SYSTEM\\CurrentControlSet\\Control\\GraphicsDrivers' -Name HwSchMode -ErrorAction SilentlyContinue).HwSchMode; if ($v -ne $null) { Write-Output $v }")
+    const mode = String(hw).trim()
+    if (mode === '2') item(hSec, '硬件加速 GPU 计划 (HAGS)', 'ok', '已开启')
+    else if (mode === '1') item(hSec, '硬件加速 GPU 计划 (HAGS)', 'warn', '未开启', '开启可降低 GPU 调度延迟：设置 → 系统 → 屏幕 → 显示卡 → 默认图形设置')
+    else item(hSec, '硬件加速 GPU 计划 (HAGS)', 'info', '未检测到（系统版本较老时无此设置）')
+  } catch (e) {}
+  if (loc.found) {
+    try {
+      const root = path.parse(loc.gameDir).root.replace('\\', '')
+      const dq = await ps("$d = Get-PSDrive -Name '" + root.charAt(0) + "' -ErrorAction SilentlyContinue; if ($d) { Write-Output ([Math]::Round($d.Free/1GB,1)) }")
+      const freeGB = parseFloat(String(dq).trim())
+      if (!isNaN(freeGB)) item(hSec, 'CS2 所在盘剩余空间', freeGB < 10 ? 'warn' : 'ok', root + ' 剩余 ' + freeGB + ' GB', freeGB < 10 ? '空间过小会影响更新与着色器缓存，建议保持 20GB 以上' : '')
+    } catch (e) {}
+  }
+  /* Steam 启动项（检查 +exec） */
+  try {
+    let launch = null
+    const steamRoot = loc.steamPath
+    if (steamRoot) {
+      const ud = path.join(steamRoot, 'userdata')
+      if (fs.existsSync(ud)) {
+        for (const uid of fs.readdirSync(ud)) {
+          const lc = path.join(ud, uid, 'config', 'localconfig.vdf')
+          if (!fs.existsSync(lc)) continue
+          const buf = fs.readFileSync(lc)
+          const i = buf.indexOf('launchoptions')
+          if (i === -1) continue
+          const keyEnd = i + 'launchoptions'.length
+          if (buf[keyEnd] === 0 && buf[keyEnd + 1] === 0) {
+            const len = buf[keyEnd + 2]
+            const val = buf.slice(keyEnd + 3, keyEnd + 3 + len).toString('latin1')
+            if (val && /^[ -~]*$/.test(val)) { launch = val; break }
+          }
+        }
+      }
+    }
+    if (launch !== null) item(hSec, 'Steam 启动项', /exec/.test(launch) ? 'ok' : 'warn', launch || '(空)', /exec/.test(launch) ? '' : '建议加 +exec <你的cfg名>，确保本工具写入的配置在启动时加载')
+    else item(hSec, 'Steam 启动项', 'info', '未读取到（Steam 未在此机启动过或路径不同）')
+  } catch (e) {}
+  /* 常见覆盖层 */
+  try {
+    const overlays = []
+    const checks = [
+      ['Discord', 'HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\Discord'],
+      ['MSI Afterburner', 'HKLM:\\SOFTWARE\\WOW6432Node\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\MSI Afterburner'],
+      ['Overwolf', 'HKLM:\\SOFTWARE\\WOW6432Node\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\Overwolf'],
+      ['NVIDIA App', 'HKLM:\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\NVIDIA App']
+    ]
+    for (const c of checks) {
+      const r = await ps("if (Test-Path '" + c[1] + "') { '1' }")
+      if (String(r).indexOf('1') !== -1) overlays.push(c[0])
+    }
+    if (overlays.length) item(hSec, '已安装游戏覆盖层', 'info', overlays.join('、'), '覆盖层有额外开销，比赛时可关闭其 Overlay')
+    else item(hSec, '已安装游戏覆盖层', 'ok', '未检测到常见覆盖层')
+  } catch (e) {}
+  out.sections.push(hSec)
+
+  /* —— AMD 能力探测 —— */
+  try {
+    const a = await amd.detect()
+    if (a.isAmd) {
+      const aSec = section('AMD 显卡与能力')
+      a.gpus.forEach(function (g) { item(aSec, g.name, 'info', '驱动 ' + (g.driver || '?')) })
+      item(aSec, 'AMD Software', a.radeonSoftware.installed ? 'ok' : 'warn', a.radeonSoftware.installed ? (a.radeonSoftware.version || '已安装') : '未检测到', a.radeonSoftware.installed ? '' : '建议安装官方驱动与 AMD Software')
+      item(aSec, 'ADL 库', a.adl.available ? 'ok' : 'info', a.adl.available ? a.adl.paths.join(', ') : '未检测到（不影响本工具功能）')
+      a.cannotAuto.forEach(function (x) { item(aSec, x.title + '（需手动）', 'info', x.why) })
+      out.sections.push(aSec)
+    }
+  } catch (e) {}
   const gSec = section('CS2 游戏配置')
   item(gSec, 'CS2 安装', loc.found ? 'ok' : 'bad', loc.found ? loc.gameDir : '未找到（确认 Steam 已安装游戏）')
   if (loc.found) {

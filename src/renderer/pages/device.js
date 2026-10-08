@@ -53,7 +53,51 @@ window.PAGES.device = {
       bar.firstChild.appendChild(document.createTextNode('当前选择：NVIDIA ' + n + ' 项 · 系统优化 ' + s + ' 项'))
     }
 
-    function load() { loadNv(); loadSys() }
+    function load() { loadNv(); loadSys(); loadAmd() }
+
+    /* ---------- AMD 能力探测卡片 ---------- */
+    function loadAmd() {
+      U.call(window.api.amd.detect()).then(function (a) {
+        if (!a.isAmd) return
+        var card = U.h('div', { class: 'card', style: 'margin-top:14px' }, [U.h('h3', {}, '🟥 AMD 显卡与能力探测')])
+        a.gpus.forEach(function (g) { card.appendChild(U.h('div', { class: 'kv' }, [U.h('span', { class: 'k' }, g.name), U.h('span', {}, '驱动 ' + (g.driver || '?'))])) })
+        card.appendChild(U.h('div', { class: 'kv' }, [U.h('span', { class: 'k' }, 'AMD Software'), U.h('span', {}, a.radeonSoftware.installed ? U.h('span', { class: 'tag green' }, a.radeonSoftware.version || '已安装') : U.h('span', { class: 'tag gold' }, '未检测到，建议安装官方驱动'))]))
+        card.appendChild(U.h('div', { class: 'kv' }, [U.h('span', { class: 'k' }, 'ADL 库'), U.h('span', {}, a.adl.available ? '已找到（' + a.adl.paths.length + ' 个）' : '未找到')]))
+        var auto = U.h('div', { style: 'margin-top:8px' }, [U.h('b', {}, '本工具可自动完成：'), U.h('div', { class: 'muted' }, a.canAuto.map(function (x) { return x.title }).join(' · '))])
+        card.appendChild(auto)
+        var manualBox = U.h('div', { style: 'margin-top:10px' })
+        manualBox.appendChild(U.h('b', {}, '需在 AMD Software 手动设置（AMD 未提供公开写入接口）：'))
+        manualBox.appendChild(U.h('div', { class: 'muted', style: 'margin:4px 0 8px' }, '为避免写坏驱动配置，本工具不擅自改这些项；下面清单可勾选记录你已核对过的项。'))
+        var done = U.draftGet('amd-checked', [])
+        var progress = U.h('span', { class: 'tag', style: 'margin-left:8px' })
+        function refreshProgress() {
+          var n = done.length
+          U.clear(progress)
+          progress.appendChild(document.createTextNode('已核对 ' + n + '/' + a.checklist.length))
+          progress.className = 'tag' + (n === a.checklist.length ? ' green' : '')
+        }
+        a.checklist.forEach(function (c) {
+          var cb = U.h('input', { type: 'checkbox' })
+          cb.checked = done.indexOf(c.id) !== -1
+          cb.addEventListener('change', function () {
+            var i = done.indexOf(c.id)
+            if (cb.checked && i === -1) done.push(c.id)
+            if (!cb.checked && i !== -1) done.splice(i, 1)
+            U.draftSet('amd-checked', done)
+            refreshProgress()
+          })
+          manualBox.appendChild(U.h('label', { class: 'check-row' }, [cb, U.h('span', {}, [U.h('b', {}, c.label), U.h('div', { class: 'muted' }, c.note)])]))
+        })
+        manualBox.appendChild(U.h('div', { class: 'row', style: 'margin-top:8px' }, [progress]))
+        card.appendChild(manualBox)
+        card.appendChild(U.h('div', { class: 'row', style: 'margin-top:10px' }, [
+          U.h('button', { class: 'btn primary', onclick: function () { U.call(window.api.amd.open()).then(function (r) { U.toast(r.message) }) } }, '🖥️ 打开 AMD Software'),
+          U.h('button', { class: 'btn', onclick: function () { U.openSettings('ms-settings:display') } }, '🖵 显示与刷新率设置')
+        ]))
+        refreshProgress()
+        view.appendChild(card)
+      }).catch(function () {})
+    }
 
     function loadNv(force) {
       nvBody.textContent = '加载中…'
