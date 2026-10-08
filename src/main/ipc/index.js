@@ -5,6 +5,9 @@ const power = require('./power')
 const gpu = require('./gpu')
 const cs2cfg = require('./cs2cfg')
 const apply = require('./apply')
+const steam302 = require('./steam302')
+const report = require('./report')
+const { screen } = require('electron')
 
 function handle(channel, fn) {
   ipcMain.handle(channel, async function (evt) {
@@ -68,6 +71,23 @@ function registerIpc() {
   handle('apply:sysApply', function (ids) { return apply.sysApply(ids) })
   handle('apply:mouseRestore', function () { return apply.mouseRestore() })
   handle('apply:all', function (plan) { return apply.applyAll(plan) })
+
+  // Steam 访问辅助
+  handle('steam:status', function () { return steam302.status() })
+  handle('steam:probe', function () { return steam302.probe() })
+  handle('steam:enable', function () { return steam302.enable() })
+  handle('steam:disable', function () { return steam302.disable() })
+
+  // 一键体检报告
+  handle('report:generate', function () { return report.generate() })
+  handle('display:info', function () {
+    try {
+      return screen.getAllDisplays().map(function (d) {
+        return { bounds: d.bounds, scaleFactor: d.scaleFactor, frequency: d.displayFrequency || null, internal: d.internal, label: d.label }
+      })
+    } catch (e) { return [] }
+  })
+  handle('report:save', function (markdown) { return report.saveMarkdown(markdown) })
 }
 
 module.exports = { registerIpc }

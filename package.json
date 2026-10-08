@@ -1,7 +1,7 @@
 {
   "name": "cs2-tuner",
   "productName": "CS2 优化助手",
-  "version": "0.5.0",
+  "version": "0.6.0",
   "private": true,
   "description": "帮助 CS2 新玩家快速调整显卡设置（NVIDIA/AMD）、系统电源计划、准星与持枪/鼠标参数的 Windows 桌面工具。",
   "main": "src/main/index.js",

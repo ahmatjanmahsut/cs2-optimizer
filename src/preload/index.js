@@ -10,6 +10,18 @@ function invoker(channel) {
 
 contextBridge.exposeInMainWorld('api', {
   version: '0.1.0',
+  steam: {
+    status: invoker('steam:status'),
+    probe: invoker('steam:probe'),
+    enable: invoker('steam:enable'),
+    disable: invoker('steam:disable')
+  },
+  report: {
+    generate: invoker('report:generate'),
+    saveMarkdown: invoker('report:save'),
+    displays: invoker('display:info')
+  
+  },
   pro: {
     data: invoker('pro:data')
   },

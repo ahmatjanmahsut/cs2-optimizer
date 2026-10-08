@@ -197,6 +197,21 @@ const SYS = [
     }
   },
   {
+    id: 'refresh-max', title: '显示器刷新率拉满（主显示器）',
+    desc: '很多新显示器默认跑在 60Hz！通过 Win32 显示 API 直接切换到当前分辨率支持的最高刷新率（N/A/I 卡通用，无需管理员）',
+    async check() {
+      const r = await ps("powershell -NoProfile -ExecutionPolicy Bypass -File '" + path.join(ASSETS, 'set-refresh.ps1') + "'")
+      const m = /READ cur=(\d+) max=(\d+)/.exec(String(r))
+      return m ? Number(m[1]) >= Number(m[2]) : null
+    },
+    async apply() {
+      const r = await ps("powershell -NoProfile -ExecutionPolicy Bypass -File '" + path.join(ASSETS, 'set-refresh.ps1') + "' -Apply")
+      const m = /APPLIED code=(-?\d+) to=(\d+)/.exec(String(r))
+      if (m && (m[1] === '0' || m[1] === '1')) return '刷新率已切换到 ' + m[2] + 'Hz'
+      fail('切换失败（显示器可能不支持该组合，或需要恢复模式手动设置）')
+    }
+  },
+  {
     id: 'mouse-accel', title: '关闭“提高指针精确度”（鼠标加速）',
     desc: 'FPS 玩家标配：消除鼠标加速对肌肉记忆的干扰。改注册表并提示：新进程立即生效，个别情况注销一次更彻底',
     async check() {
