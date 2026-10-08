@@ -21,40 +21,55 @@ const F = {
 }
 function serverPath() { return path.join(__dirname, '..', 'assets', 'steam302-server.js') }
 
-function httpsGet(url, ms) {
+/* 多源 DoH：污染主要由境内递归返回假 A 记录导致；Google/Cloudflare 用 IP 直连+正确 SNI
+   往往仍可达，返回真实边缘 IP。全部源合并后再逐个 TLS 实测，authorized 为 true 的才进名单。 */
+function httpsGetJson(opts, ms) {
   return new Promise(function (resolve, reject) {
-    const req = https.get(url, { timeout: ms }, function (res) {
+    const req = https.get(Object.assign({ timeout: ms }, opts), function (res) {
       let data = ''
       res.on('data', function (c) { data += c })
-      res.on('end', function () { resolve(data) })
+      res.on('end', function () { try { resolve(JSON.parse(data)) } catch (e) { reject(e) } })
     })
     req.on('timeout', function () { req.destroy(new Error('timeout')) })
     req.on('error', reject)
   })
 }
+const DOH_SOURCES = [
+  { hostname: 'dns.alidns.com', path: '/resolve?name=%N%&type=1' },
+  { hostname: '8.8.8.8', servername: 'dns.google', headers: { host: 'dns.google' }, path: '/resolve?name=%N%&type=1' },
+  { hostname: 'dns.google', path: '/resolve?name=%N%&type=1' },
+  { hostname: '1.1.1.1', servername: 'cloudflare-dns.com', headers: { host: 'cloudflare-dns.com', Accept: 'application/dns-json' }, path: '/dns-query?name=%N%&type=1' },
+  { hostname: '223.6.6.6', path: '/resolve?name=%N%&type=1' }
+]
 async function resolveDoH(name) {
-  const urls = [
-    'https://dns.alidns.com/resolve?name=' + name + '&type=1',
-    'https://223.6.6.6/resolve?name=' + name + '&type=1'
-  ]
-  for (const u of urls) {
+  const all = []
+  const seen = {}
+  for (const src of DOH_SOURCES) {
     try {
-      const j = JSON.parse(await httpsGet(u, 5000))
+      const j = await httpsGetJson({
+        hostname: src.hostname,
+        servername: src.servername,
+        path: src.path.replace('%N%', name),
+        headers: Object.assign({ 'User-Agent': 'cs2tuner' }, src.headers || {})
+      }, 5000)
       const ips = (j.Answer || []).filter(function (a) { return a.type === 1 }).map(function (a) { return a.data })
-      if (ips.length) return ips
+      for (const ip of ips) { if (!seen[ip] && /^\d+\.\d+\.\d+\.\d+$/.test(ip)) { seen[ip] = true; all.push(ip) } }
     } catch (e) {}
   }
-  return []
+  return all
 }
+/* 用 Node 原生 TLS 校验（证书链+域名）。Steam 正规 CDN 边缘必然通过；
+   DNS 污染 IP / 中间设备伪装证书必然失败。authorized 握手成功 = 真接入点。 */
 function tlsTest(host, ip, ms) {
   return new Promise(function (resolve) {
     const t0 = Date.now()
     let settled = false
-    const s = tls.connect({ host: ip, port: 443, servername: host, timeout: ms, rejectUnauthorized: false }, function () {
+    const s = tls.connect({ host: ip, port: 443, servername: host, timeout: ms, rejectUnauthorized: true }, function () {
       if (settled) return
       settled = true
+      const ok = s.authorized === true
       try { s.destroy() } catch (e) {}
-      resolve({ ip: ip, ms: Date.now() - t0, ok: true })
+      resolve({ ip: ip, ms: Date.now() - t0, ok: ok })
     })
     s.on('error', function () { if (settled) return; settled = true; try { s.destroy() } catch (e) {}; resolve({ ip: ip, ms: Date.now() - t0, ok: false }) })
     s.on('timeout', function () { if (settled) return; settled = true; try { s.destroy() } catch (e) {}; resolve({ ip: ip, ok: false, ms: Date.now() - t0 }) })
@@ -65,20 +80,43 @@ function tlsTest(host, ip, ms) {
 async function probe() {
   const out = { domains: {}, probes: {}, elapsedMs: 0 }
   const t0 = Date.now()
+  const goodPool = []
+  const failedDomains = []
   for (const d of CORE_DOMAINS) {
     let ips = []
     try { ips = await resolveDoH(d) } catch (e) {}
     const results = []
-    for (const ip of ips.slice(0, 6)) {
+    for (const ip of ips.slice(0, 8)) {
       const one = await tlsTest(d, ip, 3200)
       results.push(one)
-      if (one.ok && one.ms < 800) break
+      if (one.ok && one.ms < 700) break
     }
     const good = results.filter(function (r) { return r.ok }).sort(function (a, b) { return a.ms - b.ms })
     out.probes[d] = results
-    if (good.length) out.domains[d] = good.map(function (g) { return g.ip })
+    if (good.length) {
+      out.domains[d] = good.map(function (g) { return g.ip })
+      good.map(function (g) { return g.ip }).forEach(function (ip) { if (goodPool.indexOf(ip) === -1) goodPool.push(ip) })
+    } else failedDomains.push(d)
+  }
+  /* 借道：被 DNS 污染的域名（如 steamcommunity）拿其他 Steam 域名的可达边缘 IP 以自身 SNI 重试
+     —— Akamai 等 CDN 边缘节点按 SNI 分流，只要证书对得上就是真接入 */
+  if (failedDomains.length && goodPool.length) {
+    const pool = goodPool.slice(0, 10)
+    for (const d of failedDomains) {
+      for (const ip of pool) {
+        const r = await tlsTest(d, ip, 3000)
+        out.probes[d].push(Object.assign({ borrowed: true }, r))
+        if (r.ok) {
+          out.domains[d] = out.domains[d] || []
+          if (out.domains[d].indexOf(ip) === -1) out.domains[d].push(ip)
+          break
+        }
+      }
+      if (out.domains[d]) failedDomains.splice(failedDomains.indexOf(d), 1)
+    }
   }
   out.elapsedMs = Date.now() - t0
+  out.unreachable = failedDomains
   try { fs.writeFileSync(F.probeCache(), JSON.stringify(out), 'utf8') } catch (e) {}
   return out
 }
@@ -133,13 +171,14 @@ async function runElevated(extraArgs) {
 async function enable() {
   const existing = status()
   let cached = readJsonSafe(F.probeCache())
-  if (!cached || !Object.keys(cached.domains || {}).length || (Date.now() - fs.statSync(F.probeCache()).mtimeMs) > 30 * 60 * 1000) {
+  const stale = (function () { try { return Date.now() - fs.statSync(F.probeCache()).mtimeMs > 30 * 60 * 1000 } catch (e) { return true } })()
+  if (!cached || !Object.keys(cached.domains || {}).length || stale || !cached.domains['steamcommunity.com']) {
     cached = await probe()
   }
   const domains = cached.domains || {}
   const keys = Object.keys(domains)
   if (!keys.length) {
-    throw new Error('未探测到任何可达的 Steam 接入 IP（当前网络可能对 Steam 全线阻断）。请稍后重试“检测接入点”。')
+    throw new Error('未探测到任何可达的 Steam 接入 IP。可能原因：运营商临时阻断加剧（可切换手机热点后开启一次，之后再切回常用网络）、或代理软件冲突。可稍后重试“检测接入点”。')
   }
   const cfg = {
     domains: domains,
