@@ -28,6 +28,8 @@ function createWindow() {
 app.whenReady().then(function () {
   Menu.setApplicationMenu(null)
   registerIpc()
+  /* 启动自愈：若上次异常退出导致 hosts 仍指向本机而中转已死，自动清理，避免用户断网 */
+  try { require('./ipc/steam302').healOnStart().catch(function () {}) } catch (e) {}
   createWindow()
   app.on('activate', function () {
     if (BrowserWindow.getAllWindows().length === 0) createWindow()

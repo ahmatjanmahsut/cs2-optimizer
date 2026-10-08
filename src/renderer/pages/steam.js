@@ -26,7 +26,10 @@ window.PAGES.steam = {
       var enableB = U.h('button', { class: 'btn primary', onclick: function () { doEnable(enableB, disableB) } }, '⚡ 启用加速（需 UAC 授权）')
       var disableB = U.h('button', { class: 'btn', onclick: function () { doDisable(enableB, disableB) } }, '⏹ 停用并还原 hosts')
       var probeB = U.h('button', { class: 'btn blue', onclick: function () { doProbe(probeB) } }, '🔍 重新探测接入点')
-      return U.h('div', { class: 'row', style: 'margin-top:10px' }, [enableB, disableB, probeB])
+      var healB = U.h('button', { class: 'btn', onclick: function () {
+        U.call(window.api.steam.heal()).then(function (r) { U.toast(r && r.healed ? '已清理残留 hosts 注入' : '无需修复', 'ok'); refresh() })
+      } }, '🩹 修复/清理残留')
+      return U.h('div', { class: 'row', style: 'margin-top:10px' }, [enableB, disableB, probeB, healB])
     }
     var actions = btnRow()
     stBody.appendChild(actions)
@@ -34,8 +37,21 @@ window.PAGES.steam = {
     function refresh() {
       U.call(window.api.steam.status()).then(function (st) {
         var kids = []
+        var ss = st.stats || {}
         kids.push(U.h('div', { class: 'kv' }, [U.h('span', { class: 'k' }, '中转进程'),
-          U.h('span', {}, st.running ? U.h('span', { class: 'tag green' }, '运行中（PID ' + st.pid + '，已转发 ' + st.requests + ' 请求）') : U.h('span', { class: 'tag' }, '未运行'))]))
+          U.h('span', {}, st.running ? U.h('span', { class: 'tag green' }, '运行中（PID ' + st.pid + '）') : U.h('span', { class: 'tag' }, '未运行'))]))
+        if (st.running) {
+          kids.push(U.h('div', { class: 'kv' }, [U.h('span', { class: 'k' }, '转发统计'),
+            U.h('span', {}, '成功 ' + (ss.ok || 0) + ' · 失败 ' + (ss.fail || 0) + ' · 最近成功 ' + (ss.lastOk || '—'))]))
+        }
+        if (st.covered && st.covered.length) {
+          kids.push(U.h('div', { class: 'kv' }, [U.h('span', { class: 'k' }, '已覆盖域名'),
+            U.h('span', {}, st.covered.join(', '))]))
+        }
+        if (st.notCovered && st.notCovered.length) {
+          kids.push(U.h('div', { class: 'kv' }, [U.h('span', { class: 'k' }, '未覆盖域名'),
+            U.h('span', { class: 'muted' }, st.notCovered.join(', ') + '（当前网络下这些域名的接入 IP 不可达，代理软件或稍后重试可能改善）')]))
+        }
         kids.push(U.h('div', { class: 'kv' }, [U.h('span', { class: 'k' }, 'hosts 注入'),
           U.h('span', {}, st.hostsInjected ? U.h('span', { class: 'tag green' }, '已注入') : U.h('span', { class: 'tag' }, '未注入'))]))
         if (st.running && st.domains && st.domains.length) kids.push(U.h('div', { class: 'kv' }, [U.h('span', { class: 'k' }, '覆盖域名'), U.h('span', {}, st.domains.join(', '))]))
@@ -50,7 +66,10 @@ window.PAGES.steam = {
       eb.disabled = true
       U.toast('请在弹出的 UAC 窗口点“是”（仅一次）')
       U.call(window.api.steam.enable()).then(function (r) {
-        if (r.running) U.toast('Steam 中转已启用，重启浏览器/Steam 客户端生效', 'ok')
+        if (r.running) {
+          var nc = (r.notCovered || []).length
+          U.toast('Steam 中转已启用' + (nc ? '（' + nc + ' 个域名当前网络不可达，详见状态区）' : '，重启浏览器/Steam 客户端生效'), nc ? 'warn' : 'ok')
+        }
         else U.toast(r.note || '未能启动中转进程（UAC 被取消？端口 80/443 被占用？）', 'warn')
         reload()
       }).catch(function () {}).then(function () { eb.disabled = false })

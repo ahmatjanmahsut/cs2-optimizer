@@ -77,6 +77,10 @@ function registerIpc() {
   handle('steam:probe', function () { return steam302.probe() })
   handle('steam:enable', function () { return steam302.enable() })
   handle('steam:disable', function () { return steam302.disable() })
+  handle('steam:heal', function () { return steam302.healOnStart() })
+  handle('steam:customUpstreams', function () { return steam302.customUpstreams() })
+  handle('steam:setCustomUpstream', function (d, h) { return steam302.setCustomUpstream(d, h) })
+  handle('steam:proxy', function () { return steam302.proxyStatus() })
 
   // 一键体检报告
   handle('report:generate', function () { return report.generate() })
